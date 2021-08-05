@@ -1,3 +1,4 @@
+import numpy as np
 from typing import Iterable, List, Optional, Any, Type, Dict
 from pshape.identify_backend import (
     NDArrayLike,
@@ -10,7 +11,7 @@ from pshape.identify_backend import (
 
 class ArrayMetric:
     name: str
-    _default_value: str = "?"
+    _default_value: Any = "?"
     _value: Optional[str] = None
 
     def __init__(self, arr: NDArrayLike):
@@ -74,17 +75,19 @@ class DeviceMetric(ArrayMetric):
 class DtypeMetric(ArrayMetric):
     name = "dtype"
 
+    def __str__(self) -> str:
+        if identify_backend(self.arr) is BackendType.TENSORFLOW:
+            return repr(self.value)
+        else:
+            return str(self.value)
+
 
 class NumericMetric(ArrayMetric):
     name: str
     precision: int = 4
+    _default_value = np.nan
 
     def __str__(self) -> str:
-        if self.value is None or self.precision is None:
-            import pdb
-
-            pdb.set_trace()
-
         return f"{self.value:.{self.precision}f}"
 
 
@@ -100,9 +103,14 @@ class NumericCallableMetric(NumericMetric, CallableMetric):
         if backend is BackendType.TENSORFLOW:
             import tensorflow as tf
 
-            return getattr(tf.math, "reduce_" + name)(self.arr).numpy()
+            return getattr(tf.math, "reduce_" + self.name)(self.arr).numpy()
         else:
             return super()._get_value()
+
+    def is_compatible(self):
+        return super().is_compatible() or (
+            identify_backend(self.arr) is BackendType.TENSORFLOW
+        )
 
 
 class MinMetric(NumericCallableMetric):
@@ -130,6 +138,7 @@ class MeanMetric(NumericCallableMetric):
 
 # NameMetric is the default first metric and can't be used elsewhere
 DEFAULT_METRICS = [ShapeMetric]
+
 if PYTORCH_ENABLED:
     DEFAULT_METRICS += [DeviceMetric]
 DEFAULT_METRICS += [DtypeMetric]
