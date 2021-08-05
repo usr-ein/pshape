@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Prints NumPy-like arrays' shapes, mins, means, and maxes, as well as the names of the input variable outside the functions' scope """
 
-from typing import Iterable
-import __main__ as main
+from typing import Iterable, List, Optional, Any, Type, Dict
+import sys
 import warnings
 import inspect, re
 import numpy as np
 
-
-class InteractiveSourceError(Exception):
-    """The only way that the inspect module can display source code is if the code came from a file that it can access.
-    Source typed at an interactive prompt is discarded as soon as it is parsed, there's simply no way for inspect to access it. – @jasonharper"""
-
-    pass
+from pshape.exceptions import InteractiveSourceError, ParsingError
+from pshape.metrics import ArrayMetric, NameMetric, DEFAULT_METRICS
+from pshape.identify_backend import NDArrayLike
 
 
 def split_cfg_comma(s):
@@ -35,11 +32,19 @@ def split_cfg_comma(s):
     return elems
 
 
-def pshape(*arrs: Iterable[np.ndarray], precision: int = 4) -> None:
-    """Prints NumPy-like arrays' shapes, mins, means, and maxes, as well as the names of the input variable outside the functions' scope.
-    Print format is '{name} {shape} {min} {mean} {max}'
+def pshape(
+    *arrs: Iterable[NDArrayLike],
+    precision: int = 4,
+    metrics: List[Type[ArrayMetric]] = DEFAULT_METRICS,
+    heading: bool = False,
+    out=sys.stdout,
+) -> None:
+    """Prints shapes (and other metrics) of NumPy-like arrays, as well the variable names of the input as passed to this function.
     :param arrs: numpy-like arrays to print
     :param precision: decimal precision to round floats down to
+    :param metrics: list of classes which inherit from ArrayMetric and which will be computed for each array
+    :param heading: whether to print a heading row displaying each metric's name
+    :param out: where to output the things printed, defaults to stdout
 
     :return None
     """
@@ -56,70 +61,72 @@ def pshape(*arrs: Iterable[np.ndarray], precision: int = 4) -> None:
             raise InteractiveSourceError
         call_line = previous_frame.code_context[0].strip()
 
-        if not call_line.startswith("pshape("):
+        if not call_line.startswith(func_name + "("):
             warnings.warn(
                 "Please don't call pshape in a compounded function like my_func(pshape(...)), this makes parsing a nightmare.",
                 category=UserWarning,
             )
 
             return
-        args_splitted = split_cfg_comma(
-            re.search(func_name + "\((.*)\)", call_line).group(1)
-        )
-    except InteractiveSourceError:
-        warnings.warn(
-            "pshape only works in non-REPL environment because source typed at an interactive prompt is discarded as soon as it is parsed, so there's simply no way for inspect to access it. "
-            "We'll give generic names to arrays instead like arr1, arr2, arr3...",
-            category=UserWarning,
-        )
-        args_splitted = []
+        regex_search = re.search(func_name + "\((.*)\)", call_line)
 
-    if len(args_splitted) > len(arrs):
-        args_splitted = args_splitted[: len(arrs)]
-    elif len(args_splitted) < len(arrs):
-        args_splitted.extend(
-            [f"arr_{i+1}" for i in range(len(args_splitted), len(arrs))]
-        )
+        if regex_search is None:
+            raise ParsingError
+        else:
+            func_args = regex_search.group(1)
+        names = split_cfg_comma(func_args)
+    except (InteractiveSourceError, ParsingError):
+        # warnings.warn(
+        #    "pshape only works in non-REPL environment because source typed at an interactive prompt is discarded as soon as it is parsed, so there's simply no way for inspect to access it. "
+        #    "We'll give generic names to arrays instead like arr1, arr2, arr3...",
+        #    category=UserWarning,
+        # )
+        names = []
 
-    # Used for left justifying
-    max_sizes = {
-        "name": max(map(str.__len__, args_splitted)),
-        "shape": -1,
-        "min": -1,
-        "max": -1,
-        "mean": -1,
+    if len(names) > len(arrs):
+        names = names[: len(arrs)]
+    elif len(names) < len(arrs):
+        names.extend([f"arr_{i+1}" for i in range(len(names), len(arrs))])
+
+    metrics_arrs: List[List[ArrayMetric]] = []
+
+    for name, arr in zip(names, arrs):
+        # We have to add this metric manually because it's not possible to deduce the "name" (variable name)
+        # from just the array object itself
+        name_metric = NameMetric(arr)
+        name_metric.value = name
+        metrics_arrs.append([name_metric] + [M(arr) for M in metrics])
+
+    metrics_max_lengths: Dict[Type[ArrayMetric], int] = {
+        M: len(M.name) for M in [NameMetric] + metrics
     }
 
-    try_get_attr = (
-        lambda arr, attr: getattr(arr, attr)()
-        if hasattr(arr, attr) and callable(getattr(arr, attr))
-        else "?"
-    )
+    for metrics_arr in metrics_arrs:
+        for metric in metrics_arr:
+            metrics_max_lengths[metric.__class__] = max(
+                metrics_max_lengths[metric.__class__], len(metric)
+            )
 
-    # Computes the string sizes and finds the max size of each kind to see how to left justify that column correctly
-
-    for name, arr in zip(args_splitted, arrs):
-        max_sizes["shape"] = max(
-            max_sizes["shape"],
-            len(str(tuple(arr.shape)) if hasattr(arr, "shape") else "?"),
-        )
-        max_sizes["min"] = max(
-            max_sizes["min"], len(f"{try_get_attr(arr, 'min'):.{precision}f}")
-        )
-        max_sizes["max"] = max(
-            max_sizes["max"], len(f"{try_get_attr(arr, 'max'):.{precision}f}")
-        )
-        max_sizes["mean"] = max(
-            max_sizes["mean"], len(f"{try_get_attr(arr, 'mean'):.{precision}f}")
-        )
-
-    for name, arr in zip(args_splitted, arrs):
-        shape = str(tuple(arr.shape)) if hasattr(arr, "shape") else "?"
-        min_v = f"{try_get_attr(arr, 'min'):.{precision}f}"
-        max_v = f"{try_get_attr(arr, 'max'):.{precision}f}"
-        mean_v = f"{try_get_attr(arr, 'mean'):.{precision}f}"
+    if heading:
         print(
-            f"{name.ljust(max_sizes['name'])} {shape.ljust(max_sizes['shape'])} {min_v.ljust(max_sizes['min'])} {mean_v.ljust(max_sizes['mean'])} {max_v.ljust(max_sizes['max'])}"
+            " ".join(
+                map(
+                    lambda M: str(M.name).ljust(metrics_max_lengths[M]),
+                    [NameMetric] + metrics,
+                )
+            ),
+            file=out
+        )
+
+    for metrics_arr in metrics_arrs:
+        print(
+            " ".join(
+                map(
+                    lambda m: str(m).ljust(metrics_max_lengths[m.__class__]),
+                    metrics_arr,
+                )
+            ),
+            file=out
         )
 
 
