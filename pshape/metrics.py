@@ -1,5 +1,11 @@
 from typing import Iterable, List, Optional, Any, Type, Dict
-from pshape.identify_backend import NDArrayLike, identify_backend, BackendType
+from pshape.identify_backend import (
+    NDArrayLike,
+    identify_backend,
+    BackendType,
+    PYTORCH_ENABLED,
+    TF_ENABLED,
+)
 
 
 class ArrayMetric:
@@ -54,11 +60,15 @@ class NameMetric(ArrayMetric):
 class ShapeMetric(ArrayMetric):
     name = "shape"
 
+    def _get_value(self):
+        return tuple(super()._get_value())
+
 
 class DeviceMetric(ArrayMetric):
     """Specific to PyTorch"""
 
     name = "device"
+    _default_value = "N/A"
 
 
 class DtypeMetric(ArrayMetric):
@@ -111,6 +121,7 @@ class MeanMetric(NumericCallableMetric):
 
         if backend is BackendType.PYTORCH:
             import torch
+
             # PyTorch can't compute mean of integer-like types
             self.arr = self.arr.to(torch.float)
 
@@ -118,11 +129,10 @@ class MeanMetric(NumericCallableMetric):
 
 
 # NameMetric is the default first metric and can't be used elsewhere
-DEFAULT_METRICS = [
-    ShapeMetric,
-    DeviceMetric,
-    DtypeMetric,
-    MinMetric,
-    MeanMetric,
-    MaxMetric,
-]
+DEFAULT_METRICS = [ShapeMetric]
+if PYTORCH_ENABLED:
+    DEFAULT_METRICS += [DeviceMetric]
+DEFAULT_METRICS += [DtypeMetric]
+DEFAULT_METRICS += [MinMetric]
+DEFAULT_METRICS += [MeanMetric]
+DEFAULT_METRICS += [MaxMetric]

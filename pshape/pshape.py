@@ -3,13 +3,18 @@
 
 from typing import Iterable, List, Optional, Any, Type, Dict
 import sys
+from copy import deepcopy
 import warnings
 import inspect, re
 import numpy as np
 
 from pshape.exceptions import InteractiveSourceError, ParsingError
-from pshape.metrics import ArrayMetric, NameMetric, DEFAULT_METRICS
-from pshape.identify_backend import NDArrayLike
+from pshape.metrics import ArrayMetric, NameMetric, DEFAULT_METRICS, DeviceMetric
+from pshape.identify_backend import (
+    NDArrayLike,
+    identify_backend,
+    BackendType,
+)
 
 
 def split_cfg_comma(s):
@@ -35,7 +40,7 @@ def split_cfg_comma(s):
 def pshape(
     *arrs: Iterable[NDArrayLike],
     precision: int = 4,
-    metrics: List[Type[ArrayMetric]] = DEFAULT_METRICS,
+    metrics: List[Type[ArrayMetric]] = None,
     heading: bool = False,
     out=sys.stdout,
 ) -> None:
@@ -48,9 +53,16 @@ def pshape(
 
     :return None
     """
+    if metrics is None:
+        metrics = deepcopy(DEFAULT_METRICS)
 
     if len(arrs) == 0:
         return
+
+    if DeviceMetric in metrics and all(
+        identify_backend(arr) != BackendType.PYTORCH for arr in arrs
+    ):
+        metrics.remove(DeviceMetric)
 
     try:
         frame = inspect.currentframe()
@@ -85,8 +97,8 @@ def pshape(
     except Exception:
         # We should avoid crashing the calling program if possible
         warnings.warn(
-           "pshape crashed when parsing argument names ! Continuing without them...",
-           category=UserWarning,
+            "pshape crashed when parsing argument names ! Continuing without them...",
+            category=UserWarning,
         )
         names = []
 
@@ -123,7 +135,7 @@ def pshape(
                         [NameMetric] + metrics,
                     )
                 ),
-                file=out
+                file=out,
             )
 
         for metrics_arr in metrics_arrs:
@@ -134,15 +146,19 @@ def pshape(
                         metrics_arr,
                     )
                 ),
-                file=out
+                file=out,
             )
     except Exception as e:
         # We should avoid crashing the calling program if possible
         import traceback as tb
-        trace = ''.join(tb.format_exception(None, e, e.__traceback__))
+
+        trace = "".join(tb.format_exception(None, e, e.__traceback__))
         warnings.warn(
-                "pshape totally crashed ! This is not fatal, it's just a bug in pshape, please report it at https://github.com/sam1902/pshape/issues/new \n Please make sure to include this: \n" + str(e) + '\n' + trace,
-           category=UserWarning,
+            "pshape totally crashed ! This is not fatal, it's just a bug in pshape, please report it at https://github.com/sam1902/pshape/issues/new \n Please make sure to include this: \n"
+            + str(e)
+            + "\n"
+            + trace,
+            category=UserWarning,
         )
 
 
