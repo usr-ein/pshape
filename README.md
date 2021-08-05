@@ -1,4 +1,6 @@
 # Pshape
+[![PyPI version](https://badge.fury.io/py/pshape.svg)](https://badge.fury.io/py/pshape)
+
 Prints NumPy-like arrays' shapes, mins, means, and maxes, as well as the names of the input variable outside the functions' scope.
 
 This comes in very handy when debugging complex programs that manipulate huge `ndarray`s (aka Tensors) where shape (dimensions) and value ranges vary
