@@ -82,51 +82,67 @@ def pshape(
         #    category=UserWarning,
         # )
         names = []
+    except Exception:
+        # We should avoid crashing the calling program if possible
+        warnings.warn(
+           "pshape crashed when parsing argument names ! Continuing without them...",
+           category=UserWarning,
+        )
+        names = []
 
-    if len(names) > len(arrs):
-        names = names[: len(arrs)]
-    elif len(names) < len(arrs):
-        names.extend([f"arr_{i+1}" for i in range(len(names), len(arrs))])
+    try:
+        if len(names) > len(arrs):
+            names = names[: len(arrs)]
+        elif len(names) < len(arrs):
+            names.extend([f"arr_{i+1}" for i in range(len(names), len(arrs))])
 
-    metrics_arrs: List[List[ArrayMetric]] = []
+        metrics_arrs: List[List[ArrayMetric]] = []
 
-    for name, arr in zip(names, arrs):
-        # We have to add this metric manually because it's not possible to deduce the "name" (variable name)
-        # from just the array object itself
-        name_metric = NameMetric(arr)
-        name_metric.value = name
-        metrics_arrs.append([name_metric] + [M(arr) for M in metrics])
+        for name, arr in zip(names, arrs):
+            # We have to add this metric manually because it's not possible to deduce the "name" (variable name)
+            # from just the array object itself
+            name_metric = NameMetric(arr)
+            name_metric.value = name
+            metrics_arrs.append([name_metric] + [M(arr) for M in metrics])
 
-    metrics_max_lengths: Dict[Type[ArrayMetric], int] = {
-        M: len(M.name) for M in [NameMetric] + metrics
-    }
+        metrics_max_lengths: Dict[Type[ArrayMetric], int] = {
+            M: len(M.name) for M in [NameMetric] + metrics
+        }
 
-    for metrics_arr in metrics_arrs:
-        for metric in metrics_arr:
-            metrics_max_lengths[metric.__class__] = max(
-                metrics_max_lengths[metric.__class__], len(metric)
+        for metrics_arr in metrics_arrs:
+            for metric in metrics_arr:
+                metrics_max_lengths[metric.__class__] = max(
+                    metrics_max_lengths[metric.__class__], len(metric)
+                )
+
+        if heading:
+            print(
+                " ".join(
+                    map(
+                        lambda M: str(M.name).ljust(metrics_max_lengths[M]),
+                        [NameMetric] + metrics,
+                    )
+                ),
+                file=out
             )
 
-    if heading:
-        print(
-            " ".join(
-                map(
-                    lambda M: str(M.name).ljust(metrics_max_lengths[M]),
-                    [NameMetric] + metrics,
-                )
-            ),
-            file=out
-        )
-
-    for metrics_arr in metrics_arrs:
-        print(
-            " ".join(
-                map(
-                    lambda m: str(m).ljust(metrics_max_lengths[m.__class__]),
-                    metrics_arr,
-                )
-            ),
-            file=out
+        for metrics_arr in metrics_arrs:
+            print(
+                " ".join(
+                    map(
+                        lambda m: str(m).ljust(metrics_max_lengths[m.__class__]),
+                        metrics_arr,
+                    )
+                ),
+                file=out
+            )
+    except Exception as e:
+        # We should avoid crashing the calling program if possible
+        import traceback as tb
+        trace = ''.join(tb.format_exception(None, e, e.__traceback__))
+        warnings.warn(
+                "pshape totally crashed ! This is not fatal, it's just a bug in pshape, please report it at https://github.com/sam1902/pshape/issues/new \n Please make sure to include this: \n" + str(e) + '\n' + trace,
+           category=UserWarning,
         )
 
 
