@@ -8,7 +8,7 @@ README = (HERE / "README.md").read_text()
 
 setup(
     name="pshape",
-    version="0.2.0",
+    version="0.2.1",
     packages=["pshape"],
     description="Prints NumPy-like arrays' shapes, mins, means, and maxes, as well as the names of the input variable outside the functions' scope",
     long_description=README,
