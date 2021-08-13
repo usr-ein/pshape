@@ -41,7 +41,7 @@ def pshape(
     *arrs: Iterable[NDArrayLike],
     precision: int = 4,
     metrics: List[Type[ArrayMetric]] = None,
-    heading: bool = False,
+    heading: bool = True,
     out=sys.stdout,
 ) -> None:
     """Prints shapes (and other metrics) of NumPy-like arrays, as well the variable names of the input as passed to this function.
